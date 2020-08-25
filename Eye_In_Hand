@@ -1,0 +1,241 @@
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import cv2
+import numpy as np
+import gpiozero
+import RPi.GPIO as GPIO
+
+camera = PiCamera()
+image_width = 640
+image_height = 480
+camera.resolution = (image_width, image_height)
+camera.framerate = 32
+rawCapture = PiRGBArray(camera, size=(image_width, image_height))
+center_image_x = image_width / 2
+center_image_y = image_height / 2
+minimum_area = 250
+maximum_area = 100000
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+GPIO.setup(18,GPIO.OUT)
+GPIO.setup(23,GPIO.OUT)
+GPIO.setup(24,GPIO.OUT)
+GPIO.setup(25,GPIO.OUT)
+
+
+#Here we initialized the state. The robot will be initialised in state 1 so that it starts centre position
+State=1 # 1 is centre, #2 is up #3 is down #4 is left #5 is right
+
+#Define the Hue that we want
+lower_color = np.array([35,74,6])
+upper_color = np.array([64, 255, 255])
+
+for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+	image = frame.array
+
+	hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+	color_mask = cv2.inRange(hsv, lower_color, upper_color)
+
+	contours, hierarchy = cv2.findContours(color_mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+	object_area = 0
+	object_x = 0
+	object_y = 0
+
+	for contour in contours:
+		x, y, width, height = cv2.boundingRect(contour)
+		found_area = width * height
+		center_x = x + (width / 2)
+		center_y = y + (height / 2)
+		if object_area < found_area:
+			object_area = found_area
+			object_x = center_x
+			object_y = center_y
+	if object_area > 0:
+		ball_location = [object_area, object_x, object_y]
+	else:
+		ball_location = None
+
+	if ball_location:
+	 if State==1:
+		if (ball_location[0] > minimum_area) and (ball_location[0] < maximum_area):
+			if ball_location[1] > (center_image_x + (image_width/3)):
+				#robot.right(turn_speed)
+				print("OBJECT GOING TO LEFT, ROBOT GO RIGHT")
+				print(State)
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.LOW)
+				State=5 
+
+			elif ball_location[1] < (center_image_x - (image_width/3)):
+				#robot.left(turn_speed)
+				print("OBJECT GOING TO RIGHT, ROBOT GO LEFT")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.LOW)
+				GPIO.output(25,GPIO.HIGH)
+				State=4
+				print(State)
+			
+			elif ball_location[2] < (center_image_y - (image_height/3)):
+				print("OBJECT GOING UP, ROBOT GO UP")
+				GPIO.output(18,GPIO.LOW)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=2
+				print(State)
+				
+			elif ball_location[2] > (center_image_y + (image_height/3)):
+				print("OBJECT GOING DOWN, ROBOT GO DOWN")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.LOW)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=3
+				print(State)
+			else:
+				#robot.forward(forward_speed)
+				print("Centre")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=1
+				print(State)
+				
+		elif (ball_location[0] < minimum_area):
+			print("Target isn't large enough, searching")
+		else:
+			print("Target large enough, stopping")
+			
+	 elif State==2:
+	 	if (ball_location[0] > minimum_area) and (ball_location[0] < maximum_area):
+			if ball_location[2] > (center_image_y + (image_height/3)):
+				print("OBJECT GOING DOWN, ROBOT GO CENTRE (TOP)")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=1
+				print(State)
+			else:
+				print("Object still on top, waiting to go DOWN")
+				GPIO.output(18,GPIO.LOW)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=2
+				print(State)
+		else:
+			print("Object still on top, waiting to go DOWN")
+			GPIO.output(18,GPIO.LOW)
+			GPIO.output(23,GPIO.HIGH)
+			GPIO.output(24,GPIO.HIGH)
+			GPIO.output(25,GPIO.HIGH)
+			State=2
+			print(State)
+			
+	 elif State==3:
+	 	if (ball_location[0] > minimum_area) and (ball_location[0] < maximum_area):
+			if ball_location[2] < (center_image_y - (image_height/3)):
+				print("OBJECT GOING UP, ROBOT GO CENTRE (BOTTOM)")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=1
+				print(State)
+			else:
+				print("Object still on bottom, waiting to go UP")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.LOW)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=3
+				print(State)
+		else:
+			print("Object still on bottom, waiting to go UP")
+			GPIO.output(18,GPIO.HIGH)
+			GPIO.output(23,GPIO.LOW)
+			GPIO.output(24,GPIO.HIGH)
+			GPIO.output(25,GPIO.HIGH)
+			State=3
+			print(State)
+			
+			
+	 elif State==4: #robot at left position
+	 	if (ball_location[0] > minimum_area) and (ball_location[0] < maximum_area):
+			if ball_location[1] > (center_image_x + (image_width/3)):
+				print("OBJECT GOING LEFT, ROBOT GO CENTRE (LEFT)")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=1
+				print(State)
+			else:
+				print("Object still on RIGHT, waiting to go LEFT")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.LOW)
+				GPIO.output(25,GPIO.HIGH)
+				State=4
+				print(State)
+		else:
+			print("Searching for object on (ROBOT:LEFT)")
+			GPIO.output(18,GPIO.HIGH)
+			GPIO.output(23,GPIO.HIGH)
+			GPIO.output(24,GPIO.LOW)
+			GPIO.output(25,GPIO.HIGH)
+			State=4
+			print(State)	
+			
+			
+	 elif State==5: #robot at right position
+		if (ball_location[0] > minimum_area) and (ball_location[0] < maximum_area):
+			if ball_location[1] < (center_image_x - (image_width/3)):
+				print("OBJECT GOING RIGHT, ROBOT GO CENTRE (ROBOT:RIGHT)")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.HIGH)
+				State=1
+				print(State)
+			else:
+				print("Object still on LEFT, waiting to go RIGHT")
+				GPIO.output(18,GPIO.HIGH)
+				GPIO.output(23,GPIO.HIGH)
+				GPIO.output(24,GPIO.HIGH)
+				GPIO.output(25,GPIO.LOW)
+				State=5
+				print(State)
+		else:
+			print("Searching for object on (ROBOT:RIGHT)")
+			GPIO.output(18,GPIO.HIGH)
+			GPIO.output(23,GPIO.HIGH)
+			GPIO.output(24,GPIO.HIGH)
+			GPIO.output(25,GPIO.LOW)
+			State=5
+			print(State)					
+	 else:
+		 
+		 print("looking for state, robot go back to centre")
+		 GPIO.output(18,GPIO.HIGH)
+		 GPIO.output(23,GPIO.HIGH)
+		 GPIO.output(24,GPIO.HIGH)
+		 GPIO.output(25,GPIO.HIGH)
+		 State=1
+		 print(State)					
+	else:
+		print("Target not found, searching")
+	cv2.imshow("Frames",image)
+	cv2.imshow("Mask",color_mask)
+	rawCapture.truncate(0)
+	
+	key=cv2.waitKey(1)
+	if key == 27:
+	 break
