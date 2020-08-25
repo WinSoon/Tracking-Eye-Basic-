@@ -22,11 +22,7 @@ GPIO.setup(23,GPIO.OUT)
 GPIO.setup(24,GPIO.OUT)
 GPIO.setup(25,GPIO.OUT)
 
-#robot = gpiozero.Robot(left=(17,18), right=(27,22))
-#forward_speed = 0.3
-#turn_speed = 0.25
 
-HUE_VAL = 28
 
 lower_color = np.array([35,74,6])
 upper_color = np.array([64, 255, 255])
